@@ -22,6 +22,8 @@ from hw1_imitation.data import (
 from hw1_imitation.model import build_policy, PolicyType
 from hw1_imitation.evaluation import Logger
 
+from hw1_imitation.evaluation import evaluate_policy
+
 LOGDIR_PREFIX = "exp"
 
 
@@ -127,7 +129,33 @@ def run_training(config: TrainConfig) -> None:
     )
     logger = Logger(log_dir)
 
-    ### TODO: PUT YOUR MAIN TRAINING LOOP HERE ###
+    optimizer = torch.optim.Adam(model.parameters(), lr=config.lr)
+
+    step = 0
+    for epoch in range(config.num_epochs):
+        for state, action_chunk in loader:
+
+            state = state.to(device)
+            action_chunk = action_chunk.to(device)
+
+            loss = model.compute_loss(state, action_chunk)  # 正向+算Loss
+            optimizer.zero_grad()  # 清空梯度
+            loss.backward()  # 反向+算梯度
+            optimizer.step()  # 更新参数
+
+            step += 1
+
+            if step % config.log_interval == 0:  # 每100步
+                logger.log({"train/loss": loss.item()}, step=step)
+
+            if step % config.eval_interval == 0:  # 每10000步
+                evaluate_policy(model=model, normalizer=normalizer,
+                                device=device, chunk_size=config.chunk_size,
+                                video_size=config.video_size,
+                                num_video_episodes=config.num_video_episodes,
+                                flow_num_steps=config.flow_num_steps,
+                                step=step, logger=logger)
+                model.train()  # 评估完切回训练模式
 
     logger.dump_for_grading()
 
